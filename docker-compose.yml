@@ -1,0 +1,67 @@
+services:
+  bid-assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bid-assistant-app
+    ports:
+      - "8800:8800"
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    env_file:
+      - .env
+    volumes:
+      # 挂载项目代码目录（支持热更新）
+      - ./:/app
+      # 挂载数据目录（持久化存储）
+      - ./test_data:/app/test_data
+      # 挂载环境配置文件
+      - ./.env:/app/.env
+      # 挂载缓存目录（避免重复编译）
+      - ./__pycache__:/app/__pycache__
+    working_dir: /app
+    command: >
+      sh -c "pip install -r requirements.txt && 
+             python -u main.py"
+    restart: unless-stopped
+    networks:
+      - bid-network
+    # 开发模式配置
+    develop:
+      watch:
+        # 监听Python文件变化，自动重启服务
+        - action: rebuild
+          path: ./
+          target: /app
+          ignore:
+            - __pycache__/
+            - "*.pyc"
+            - ".git/"
+            - ".trae/"
+            - "test_data/"
+        # 监听requirements.txt变化，重新安装依赖
+        - action: rebuild
+          path: ./requirements.txt
+          target: /app/requirements.txt
+
+  # 可选：添加Redis缓存服务
+  redis:
+    image: redis:7-alpine
+    container_name: bid-assistant-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - bid-network
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  bid-network:
+    driver: bridge

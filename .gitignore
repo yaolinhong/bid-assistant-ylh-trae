@@ -1,0 +1,6 @@
+.env
+data
+__pycache__
+.pytest_cache
+parlant-data
+test_data
