@@ -4,7 +4,7 @@
 
 <img src="demo%20效果.png" alt="Demo 效果" height="450">
 
-基于 Kimi AI 和 Parlant 框架的智能招标助手，帮助用户高效处理招标相关业务。
+基于 Kimi AI 和 Parlant 框架的智能招标助手DEMO
 
 ### 🚀 Parlant 框架优势
 
