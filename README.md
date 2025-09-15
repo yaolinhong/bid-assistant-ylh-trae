@@ -2,7 +2,13 @@
 
 ## 📸 Demo 效果展示
 
-<img src="demo%20效果.png" alt="Demo 效果" height="450">
+<table>
+  <tr>
+    <td rowspan="2" style="text-align: center; vertical-align: middle; font-weight: bold; font-size: 16px;">Demo 效果</td>
+    <td><img src="demo%20效果.png" alt="Demo 效果 1" height="200"></td>
+    <td><img src="demo%20效果%202.png" alt="Demo 效果 2" height="200"></td>
+  </tr>
+</table>
 
 基于 Kimi AI 和 Parlant 框架的智能招标助手DEMO
 
