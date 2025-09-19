@@ -9,6 +9,7 @@ import json
 import os
 from collections import defaultdict
 from functools import wraps
+from bs4 import BeautifulSoup
 
 # 从环境变量读取API密钥
 BOCHAAI_API_KEY = os.getenv('BOCHAAI_API_KEY')
@@ -26,18 +27,22 @@ class WebSearchClient:
             timeout: 请求超时时间（秒）
             max_retries: 最大重试次数
         """
-        # 设置参数
-        self.timeout = aiohttp.ClientTimeout(total=timeout)
+        # 设置参数 - 性能优化
+        self.timeout = aiohttp.ClientTimeout(total=timeout, connect=10)
         self.max_retries = max_retries
         self.default_sources = ['bochaai']  # 只保留博查AI
-        self.concurrent_limit = 5
-        self.rate_limit_delay = 1.0
-        
+        self.concurrent_limit = 10  # 提高并发数
+        self.rate_limit_delay = 0.2  # 减少延迟
+
         self.logger = logging.getLogger(__name__)
-        
-        # 设置日志级别为DEBUG
-        self.logger.setLevel(logging.DEBUG)
-        
+
+        # 设置日志级别为INFO，减少DEBUG日志开销
+        self.logger.setLevel(logging.INFO)
+
+        # 添加搜索缓存
+        self._search_cache = {}
+        self._cache_ttl = 300  # 5分钟缓存
+
         # 统计信息
         self.stats = {
             'total_requests': 0,
@@ -114,15 +119,26 @@ class WebSearchClient:
         """
         search_start_time = time.time()
         self.stats['last_search_time'] = datetime.now().isoformat()
-        
+
         if sources is None:
             sources = self.default_sources
-        
+
+        # 检查缓存
+        cache_key = f"{query}:{':'.join(sorted(sources))}"
+        current_time = time.time()
+
+        if cache_key in self._search_cache:
+            cached_data = self._search_cache[cache_key]
+            if current_time - cached_data['timestamp'] < self._cache_ttl:
+                self.logger.info(f"返回缓存结果: '{query}'")
+                self.stats['cache_hits'] = self.stats.get('cache_hits', 0) + 1
+                return cached_data['results']
+
         self.logger.info(f"开始搜索，关键词: '{query}', 搜索源: {sources}")
-        
+
         all_results = []
         
-        # 创建带重试的搜索任务
+        # 创建带重试的搜索任务 - 优化重试策略
         async def search_with_retry(search_func, *args):
             for attempt in range(self.max_retries + 1):
                 try:
@@ -130,8 +146,8 @@ class WebSearchClient:
                 except Exception as e:
                     if attempt < self.max_retries:
                         self.stats['retry_attempts'] += 1
-                        wait_time = 2 ** attempt
-                        self.logger.warning(f"搜索失败，{wait_time}秒后重试 (第{attempt + 1}次): {str(e)}")
+                        wait_time = min(1.0, 0.5 * (attempt + 1))  # 快速重试，最多等待1秒
+                        self.logger.warning(f"搜索失败，{wait_time:.1f}秒后重试 (第{attempt + 1}次): {str(e)}")
                         await asyncio.sleep(wait_time)
                     else:
                         raise e
@@ -198,12 +214,28 @@ class WebSearchClient:
         
         # 去重和排序
         unique_results = self._deduplicate_results(all_results)
-        
+
         search_duration = time.time() - search_start_time
         self.stats['response_times'].append(search_duration)
-        
+
+        # 缓存结果
+        if unique_results:
+            self._search_cache[cache_key] = {
+                'results': unique_results,
+                'timestamp': current_time
+            }
+
+            # 清理过期缓存
+            if len(self._search_cache) > 100:  # 限制缓存大小
+                expired_keys = [
+                    key for key, data in self._search_cache.items()
+                    if current_time - data['timestamp'] > self._cache_ttl
+                ]
+                for key in expired_keys:
+                    del self._search_cache[key]
+
         self.logger.info(f"搜索完成，耗时: {search_duration:.2f}秒，原始结果: {len(all_results)}，去重后: {len(unique_results)}")
-        
+
         return sorted(unique_results, key=lambda x: x.get('publish_date', ''), reverse=True)
     
     # 已删除_search_ccgp方法，只保留博查AI搜索
